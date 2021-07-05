@@ -1,19 +1,24 @@
 const SHA256 = require('crypto-js/sha256');
 
+class Transaction {
+	constructor(fromAddress, toAddress, amount) {
+		this.fromAddress = fromAddress;
+		this.toAddress = toAddress;
+		this.amount = amount;
+	}
+}
+
 class Block {
-	constructor(index, timestamp, data, previousHash = '') {
-		this.index = index;
+	constructor(timestamp, transactions, previousHash = '') {
 		this.timestamp = timestamp;
-		this.data = data;
+		this.transactions = transactions;
 		this.previousHash = previousHash;
 		this.hash = this.calculateHash();
 		this.nonce = 0;
 	}
 
 	calculateHash() {
-		return SHA256(
-			this.index + this.previousHash + this.timestamp + JSON.stringify(this.data) + this.nonce
-		).toString();
+		return SHA256(this.previousHash + this.timestamp + JSON.stringify(this.transactions) + this.nonce).toString();
 	}
 
 	// mineBlock does the same as calculateHash, but implements proof-of-work before deciding on a final hash value
@@ -36,23 +41,48 @@ class Blockchain {
 		this.chain = [this.createGenesisBlock()];
 		// difficulty for this blockchain is hardcoded to 2
 		// in Bitcoin's case, the difficulty is adjusted in response to the average mining time of the network
-		this.difficulty = 3;
+		this.difficulty = 2;
+		// transactions made in between blocks are temporarily stored in pending transactions array, so they can be included in the next block
+		this.pendingTransactions = [];
+		// Reward in # of coins for mining a new block:
+		this.miningReward = 100;
 	}
 
 	createGenesisBlock() {
-		return new Block(0, '28/06/2021', 'Genesis block', '0');
+		return new Block('28/06/2021', 'Genesis block', '0');
 	}
 
 	getLatestBlock() {
 		return this.chain[this.chain.length - 1];
 	}
 
-	addBlock(newBlock) {
-		newBlock.previousHash = this.getLatestBlock().hash;
-		// newBlock.hash = newBlock.calculateHash();
+	// Old Method
+	// addBlock(newBlock) {
+	// 	newBlock.previousHash = this.getLatestBlock().hash;
+	// 	// newBlock.hash = newBlock.calculateHash();
 
-		newBlock.mineBlock(this.difficulty);
-		this.chain.push(newBlock);
+	// 	newBlock.mineBlock(this.difficulty);
+	// 	this.chain.push(newBlock);
+	// }
+
+	// Create new block, add pending transactions to it, and reset pendingTransactions array
+	// with transaction sending reward to miner's receiving address
+	minePendingTransactions(miningRewardAddress) {
+		// this code could be changed to give the miner more coins
+		// However, cryptocurren
+		let block = new Block(Date.now(), this.pendingTransactions);
+		block.previousHash = this.getLatestBlock().hash;
+		block.hash = block.calculateHash();
+		block.mineBlock(this.difficulty);
+
+		console.log('Block successfully mined!');
+		this.chain.push(block);
+
+		this.pendingTransactions = [new Transaction(null, miningRewardAddress, this.miningReward)];
+	}
+
+	createTransaction(transaction) {
+		this.pendingTransactions.push(transaction);
 	}
 
 	// verify integrity of blockchain
@@ -78,16 +108,16 @@ class Blockchain {
 
 let graemeCoin = new Blockchain();
 
-console.log('Mining block 1...');
-graemeCoin.addBlock(new Block(1, '01/07/2021', { amount: 4 }));
+// console.log('Mining block 1...');
+// graemeCoin.addBlock(new Block(1, '01/07/2021', { amount: 4 }));
 
-console.log('Mining block 2...');
-graemeCoin.addBlock(new Block(2, '03/07/2021', { amount: 10 }));
+// console.log('Mining block 2...');
+// graemeCoin.addBlock(new Block(2, '03/07/2021', { amount: 10 }));
 
 // TESTING BLOCKCHAIN FIRST VIDEO
 // console.log('Is blockchain valid? ' + graemeCoin.isChainValid());
 
-// graemeCoin.chain[1].data = { amount: 100 };
+// graemeCoin.chain[1].transactions = { amount: 100 };
 // graemeCoin.chain[1].hash = graemeCoin.chain[1].calculateHash();
 
 // console.log('Is blockchain valid? ' + graemeCoin.isChainValid());
