@@ -1,10 +1,37 @@
 const SHA256 = require('crypto-js/sha256');
+const EC = require('elliptic').ec;
+const ec = new EC('secp256k1');
 
 class Transaction {
 	constructor(fromAddress, toAddress, amount) {
 		this.fromAddress = fromAddress;
 		this.toAddress = toAddress;
 		this.amount = amount;
+	}
+
+	calculateHash() {
+		return SHA256(this.fromAddress + this.toAddress + this.amount).toString();
+	}
+
+	signTransaction(signingKey) {
+		if (signingKey.getPublic('hex') !== this.fromAddress) {
+			throw new Error('You cannot sign transactions for other wallets!');
+		}
+
+		const hashTx = this.calculateHash();
+		const sig = signingKey.sign(hashTx, 'base64');
+		this.signature = sig.toDER('hex');
+	}
+
+	isValid() {
+		if (this.fromAddress === null) return true;
+
+		if (!this.signature || this.signature.length === 0) {
+			throw new Error('No signature in this transaction');
+		}
+
+		const publicKey = ec.keyFromPublic(this.fromAddress, 'hex');
+		return publicKey.verify(this.calculateHash(), this.signature);
 	}
 }
 
@@ -33,6 +60,16 @@ class Block {
 		}
 
 		console.log('Block mined: ' + this.hash);
+	}
+
+	hasValidTransactions() {
+		for (const tx of this.transactions) {
+			if (!tx.isValid()) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 }
 
@@ -70,6 +107,9 @@ class Blockchain {
 	minePendingTransactions(miningRewardAddress) {
 		// this code could be changed to give the miner more coins
 		// However, in practice, the other nodes in the peer-to-peer network would ignore your illegitimate transaction
+		const rewardTx = new Transaction(null, miningRewardAddress, this.miningReward);
+		this.pendingTransactions.push(rewardTx);
+
 		let block = new Block(Date.now(), this.pendingTransactions);
 		block.previousHash = this.getLatestBlock().hash;
 		block.hash = block.calculateHash();
@@ -77,13 +117,22 @@ class Blockchain {
 
 		console.log('Block successfully mined!');
 		this.chain.push(block);
+		this.pendingTransactions = [];
 
 		// because the reward is stored in pendingTransactions,
 		// the miner does not actually receive the reward until the next block is mined
-		this.pendingTransactions = [new Transaction(null, miningRewardAddress, this.miningReward)];
+		// this.pendingTransactions = [new Transaction(null, miningRewardAddress, this.miningReward)];
 	}
 
-	createTransaction(transaction) {
+	addTransaction(transaction) {
+		if (!transaction.fromAddress || !transaction.toAddress) {
+			throw new Error('Transaction must include from and to address');
+		}
+
+		if (!transaction.isValid()) {
+			throw new Error('Cannot add invalid transaction to chain');
+		}
+
 		this.pendingTransactions.push(transaction);
 	}
 
@@ -110,6 +159,10 @@ class Blockchain {
 		for (let i = 1; i < this.chain.length; i++) {
 			const currentBlock = this.chain[i];
 			const previousBlock = this.chain[i - 1];
+
+			if (!currentBlock.hasValidTransactions()) {
+				return false;
+			}
 
 			// check if current block's hash is valid
 			if (currentBlock.hash !== currentBlock.calculateHash()) {
